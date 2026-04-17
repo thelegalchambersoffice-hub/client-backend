@@ -250,9 +250,17 @@ router.post("/auth/register", async (req, res) => {
   } catch (err) {
     console.error(err);
 
+    const errorMessage =
+      err?.message ||
+      err?.error_description ||
+      err?.details ||
+      err?.hint ||
+      (typeof err === "string" ? err : "");
+
     res.status(500).json({
-      error:
-        err instanceof Error ? `Registration failed: ${err.message}` : "Registration failed",
+      error: errorMessage
+        ? `Registration failed: ${errorMessage}`
+        : "Registration failed",
     });
   }
 });
