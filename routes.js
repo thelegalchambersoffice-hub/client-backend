@@ -182,6 +182,8 @@ const verifyRazorpayWebhookSignature = ({ rawBody, signature }) => {
 router.post("/auth/register", async (req, res) => {
   try {
     const { name, email, password, role } = req.body;
+    const cleanName = String(name || "").trim();
+    const cleanEmail = String(email || "").trim().toLowerCase();
 
     if (role === "admin") {
       return res.status(403).json({
@@ -189,16 +191,18 @@ router.post("/auth/register", async (req, res) => {
       });
     }
 
-    if (!name || !email || !password || !role) {
+    if (!cleanName || !cleanEmail || !password || !role) {
       return res.status(400).json({ error: "All fields required" });
     }
 
     // Check if email exists
-    const { data: existing } = await supabase
+    const { data: existing, error: existingError } = await supabase
       .from("users")
       .select("id")
-      .eq("email", email)
-      .single();
+      .eq("email", cleanEmail)
+      .maybeSingle();
+
+    if (existingError) throw existingError;
 
     if (existing) {
       return res.status(400).json({
@@ -227,14 +231,19 @@ router.post("/auth/register", async (req, res) => {
     // Insert user
     const { error } = await supabase.from("users").insert([
       {
-        name,
-        email,
+        name: cleanName,
+        email: cleanEmail,
         password: hash,
         role,
         notary_number: notaryNumber,
       },
     ]);
 
+    if (error?.code === "23505") {
+      return res.status(400).json({
+        error: "Email already registered",
+      });
+    }
     if (error) throw error;
 
     res.json({ message: "Registered successfully" });
@@ -242,7 +251,8 @@ router.post("/auth/register", async (req, res) => {
     console.error(err);
 
     res.status(500).json({
-      error: "Registration failed",
+      error:
+        err instanceof Error ? `Registration failed: ${err.message}` : "Registration failed",
     });
   }
 });
@@ -251,8 +261,9 @@ router.post("/auth/register", async (req, res) => {
 router.post("/auth/login", async (req, res) => {
   try {
     const { email, password } = req.body;
+    const cleanEmail = String(email || "").trim().toLowerCase();
 
-    if (!email || !password) {
+    if (!cleanEmail || !password) {
       return res.status(400).json({
         error: "Email and password required",
       });
@@ -262,7 +273,7 @@ router.post("/auth/login", async (req, res) => {
     const { data: user, error } = await supabase
       .from("users")
       .select("*")
-      .eq("email", email)
+      .eq("email", cleanEmail)
       .single();
 
     if (!user || error) {
